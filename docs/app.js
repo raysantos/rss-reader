@@ -152,11 +152,12 @@
   let items = [];
   let feeds = [];
 
-  const FIELDS = 'id,feed_title,title,link,image,published,read,starred';
+  const FIELDS = 'id,feed_id,feed_title,title,link,image,published,read,starred';
+  let feedFilter = null; // { id, title } when showing one source
   const FILTER = { unread: '&read=is.false', starred: '&starred=is.true', all: '' };
 
   async function loadItems() {
-    items = await api(`items?select=${FIELDS}${FILTER[view]}&order=published.desc.nullslast,id.desc&limit=300`);
+    items = await api(`items?select=${FIELDS}${FILTER[view]}${feedFilter ? `&feed_id=eq.${feedFilter.id}` : ''}&order=published.desc.nullslast,id.desc&limit=300`);
     render();
     refreshCounts();
   }
@@ -187,6 +188,7 @@
     document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-pressed', t.dataset.view === view));
     if (!items.length) {
       const msg = !feeds.length ? 'No feeds yet. <button class="btn" id="firstFeed" style="margin-top:12px">Add your first feed</button>'
+        : feedFilter ? `Nothing ${view === 'unread' ? 'unread' : view === 'starred' ? 'starred' : 'saved'} from ${esc(feedFilter.title)} right now.`
         : view === 'unread' ? 'All caught up.' : view === 'starred' ? 'Nothing starred yet.' : 'No articles yet. New feeds fill in within 15 minutes.';
       $('#list').innerHTML = `<div class="empty">${msg}</div>`;
       $('#firstFeed')?.addEventListener('click', openSheet);
@@ -197,7 +199,7 @@
         <a href="${esc(safeUrl(i.link))}" target="_blank" rel="noopener noreferrer">
           ${/^https:\/\//i.test(i.image || '') ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.removeAttribute('src');this.classList.add('ph')">` : '<div class="thumb ph"></div>'}
           <div class="txt">
-            <div class="meta"><span class="dot"></span><span>${esc(i.feed_title)}</span>${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div>
+            <div class="meta"><span class="dot"></span>${i.feed_id ? `<span class="src" data-feed="${i.feed_id}" title="Show only ${esc(i.feed_title)}">${esc(i.feed_title)}</span>` : `<span>${esc(i.feed_title)}</span>`}${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div>
             <h2 class="title">${esc(i.title)}</h2>
           </div>
         </a>
@@ -217,6 +219,7 @@
   $('#list').addEventListener('click', async e => {
     const card = e.target.closest('.item'); if (!card) return;
     const item = items.find(i => String(i.id) === card.dataset.id); if (!item) return;
+    if (e.target.closest('.src')) { e.preventDefault(); showFeed(item.feed_id, item.feed_title); return; }
     if (e.target.closest('.star')) {
       e.preventDefault();
       item.starred = !item.starred;
@@ -231,6 +234,22 @@
         .then(refreshCounts).catch(() => {});
     }
   });
+
+  // ---- one-source view ----
+  function showFeed(id, title) {
+    if (!id) return;
+    feedFilter = { id, title: title || 'this feed' };
+    view = 'all';
+    $('#feedChipName').textContent = feedFilter.title;
+    $('#feedChip').hidden = false;
+    scrollTo(0, 0); loadItems().catch(fail);
+  }
+  function clearFeed() {
+    feedFilter = null; $('#feedChip').hidden = true;
+    scrollTo(0, 0); loadItems().catch(fail);
+  }
+  $('#feedChip').onclick = clearFeed;
+  addEventListener('keydown', e => { if (e.key === 'Escape' && feedFilter && $('#sheet').hidden) clearFeed(); });
 
   document.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; scrollTo(0, 0); loadItems().catch(fail); });
   $('#markAll').onclick = async () => {
@@ -263,7 +282,7 @@
         : !f.last_fetched ? `<div class="sub">Waiting for first check</div>`
         : `<div class="sub">${f.kind === 'page' ? 'Web page · ' : ''}${esc(host(f.feed_url || f.url))} · checked ${ago(f.last_fetched)} ago</div>`;
       return `<li class="feed-row" data-id="${f.id}">
-        <div class="txt"><div class="name">${esc(f.title || host(f.url))}</div>${status}</div>
+        <div class="txt"><button class="name" data-show="${f.id}" title="Show only this feed">${esc(f.title || host(f.url))}</button>${status}</div>
         <button class="icon-btn del" aria-label="Remove ${esc(f.title || host(f.url))}" title="Remove"><svg><use href="#i-trash"/></svg></button>
       </li>`;
     }).join('');
@@ -335,6 +354,11 @@
     } catch { msg.textContent = 'Couldn’t import that file. Try again.'; }
   });
 
+  $('#feedList').addEventListener('click', e => {
+    const b = e.target.closest('[data-show]'); if (!b) return;
+    const f = feeds.find(x => String(x.id) === b.dataset.show);
+    $('#sheet').hidden = true; showFeed(f.id, f.title || host(f.url));
+  });
   $('#feedList').addEventListener('click', async e => {
     const btn = e.target.closest('.del'); if (!btn) return;
     const f = feeds.find(x => String(x.id) === btn.closest('.feed-row').dataset.id);

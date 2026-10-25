@@ -84,6 +84,13 @@
   .star:hover { background: rgb(0 0 0 / .55); color: #fff; }
   .star[aria-pressed="true"] { color: var(--star); }
   .star[aria-pressed="true"] svg { fill: currentColor; }
+  .src { cursor: pointer; border-radius: 4px; }
+  .src:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+  .chip { margin-left: 6px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 600; background: var(--text); color: var(--bg); max-width: 60vw; }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip:hover { opacity: .85; }
+  .feed-row button.name { display: block; max-width: 100%; text-align: left; padding: 0; }
+  .feed-row button.name:hover { color: var(--accent); }
   .empty { text-align: center; color: var(--muted); padding: 64px 0; }
   .foot { font-size: 13px; color: var(--muted); padding-top: 24px; }
   .foot details { margin-top: 8px; }
@@ -210,6 +217,7 @@
         <button class="tab" data-view="unread" aria-pressed="true">Unread<span class="n" id="nUnread"></span></button>
         <button class="tab" data-view="all" aria-pressed="false">All</button>
         <button class="tab" data-view="starred" aria-pressed="false">Starred<span class="n" id="nStarred"></span></button>
+        <button class="chip" id="feedChip" hidden aria-label="Stop filtering"><span id="feedChipName"></span><svg width="14" height="14"><use href="#i-x"/></svg></button>
       </nav>
     </div>
   </header>
