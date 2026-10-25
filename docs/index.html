@@ -60,17 +60,18 @@
 
   /* list */
   main { padding: 8px 0 64px; }
-  #list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 20px; padding-top: 16px; }
-  @media (max-width: 900px) { #list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 560px) { #list { grid-template-columns: 1fr; gap: 22px; } }
+  #list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px 16px; padding-top: 16px; }
+  @media (max-width: 1050px) { #list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 760px) { #list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 480px) { #list { grid-template-columns: 1fr; gap: 20px; } }
   #list > .empty { grid-column: 1 / -1; }
   .item { position: relative; min-width: 0; }
   .item a { display: block; color: inherit; text-decoration: none; }
-  .thumb { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; background: var(--line); margin-bottom: 10px; }
+  .thumb { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--line); margin-bottom: 8px; }
   .thumb.ph { background: linear-gradient(135deg, var(--accent-soft), var(--line)); }
   .item.read .thumb { opacity: .55; }
-  .item .title { font-size: 16px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 4px 0 0; padding-right: 4px; }
-  .meta { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .item .title { font-size: 15px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 4px 0 0; padding-right: 4px; }
+  .meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
   .item.read .dot { visibility: hidden; }
   .title { font-weight: 600; font-size: 17px; line-height: 1.35; margin: 2px 0 4px; }
@@ -78,7 +79,8 @@
   .sum { color: var(--muted); font-size: 14.5px; margin: 0;
          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .item a:hover .title { color: var(--accent); }
-  .star { position: absolute; top: 8px; right: 8px; color: #fff; background: rgb(0 0 0 / .38); backdrop-filter: blur(6px); width: 36px; height: 36px; border-radius: 10px; }
+  .star { position: absolute; top: 8px; right: 8px; color: #fff; background: rgb(0 0 0 / .38); backdrop-filter: blur(6px); width: 32px; height: 32px; border-radius: 9px; }
+  .star svg { width: 17px; height: 17px; }
   .star:hover { background: rgb(0 0 0 / .55); color: #fff; }
   .star[aria-pressed="true"] { color: var(--star); }
   .star[aria-pressed="true"] svg { fill: currentColor; }
