@@ -109,12 +109,14 @@
     position: absolute; right: 8px; top: calc(100cqw * 9 / 16 - 40px);
     width: 32px; height: 32px; border-radius: 9px; color: #fff;
     background: rgb(0 0 0 / .52); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-    opacity: 0; transition: opacity .15s;
+    opacity: 0; transform: translateY(8px);
+    transition: opacity .22s ease-in, transform .22s ease-in;
   }
   .unsub svg { width: 18px; height: 18px; }
-  .item:hover .unsub, .item:focus-within .unsub { opacity: 1; }
+  .item:hover .unsub, .item:focus-within .unsub { opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) { .unsub { transition: opacity .15s; transform: none; } }
   .unsub:hover { background: #c2410c; color: #fff; }
-  @media (hover: none) { .unsub { opacity: 1; } }
+  @media (hover: none) { .unsub { opacity: 1; transform: none; } }
 
   .modal { border: 0; padding: 0; border-radius: 16px; background: var(--surface); color: var(--text); width: min(400px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgb(0 0 0 / .3); }
   .modal::backdrop { background: rgb(0 0 0 / .45); }
