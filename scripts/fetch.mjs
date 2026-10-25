@@ -154,16 +154,23 @@ async function load(feed) {
 }
 
 // ---- run ----
-const feeds = await db('feeds?select=id,user_id,url,feed_url');
+const feeds = await db('feeds?select=id,user_id,url,feed_url,kind');
 let saved = 0, failed = 0;
+const CONCURRENCY = 8;          // be polite: check a few feeds at a time
+const FIRST_UNREAD = 3;         // a brand-new feed only marks its newest few items unread
 
-await Promise.all(feeds.map(async feed => {
+async function check(feed) {
   try {
     const { url, kind, title, items } = await load(feed);
     if (items.length) {
+      const firstTime = !feed.kind;   // kind is only set after a feed's first successful check
+      const newestFirst = [...items].sort((a, b) => (b.published || '').localeCompare(a.published || ''));
       await db('items?on_conflict=feed_id,guid', {
         method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal',
-        body: items.map(i => ({ ...i, user_id: feed.user_id, feed_id: feed.id, feed_title: title })),
+        body: newestFirst.map((i, n) => ({
+          ...i, user_id: feed.user_id, feed_id: feed.id, feed_title: title,
+          read: firstTime && n >= FIRST_UNREAD,
+        })),
       });
     }
     await db(`feeds?id=eq.${feed.id}`, {
@@ -180,6 +187,11 @@ await Promise.all(feeds.map(async feed => {
     }).catch(() => {});
     console.log(`✗ ${feed.url}: ${msg}`);
   }
+}
+
+const queue = [...feeds];
+await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+  while (queue.length) await check(queue.shift());
 }));
 
 // prune: old unstarred articles, and unstarred leftovers from removed feeds
