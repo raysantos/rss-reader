@@ -70,6 +70,8 @@
   .thumb { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--line); }
   .thumb.ph { background: linear-gradient(135deg, var(--accent-soft), var(--line)); }
   .item.read .thumb { opacity: .55; }
+  .item.read.starred .thumb { opacity: 1; }
+  .item.read.starred .title { color: var(--text); font-weight: 600; }
   .media { position: relative; margin-bottom: 8px; }
   .media .meta {
     position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px);

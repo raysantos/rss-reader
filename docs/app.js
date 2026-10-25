@@ -195,7 +195,7 @@
       return;
     }
     $('#list').innerHTML = items.map(i => `
-      <article class="item ${i.read ? 'read' : ''}" data-id="${i.id}">
+      <article class="item ${i.read ? 'read' : ''} ${i.starred ? 'starred' : ''}" data-id="${i.id}">
         <a href="${esc(safeUrl(i.link))}" target="_blank" rel="noopener noreferrer">
           <div class="media">${/^https:\/\//i.test(i.image || '') ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.removeAttribute('src');this.classList.add('ph')">` : '<div class="thumb ph"></div>'}
             <div class="meta"><span class="dot"></span>${feedFilter ? '' : i.feed_id ? `<span class="src" data-feed="${i.feed_id}" title="Show only ${esc(i.feed_title)}">${esc(i.feed_title)}</span>` : `<span>${esc(i.feed_title)}</span>`}${i.published ? `${feedFilter ? '' : '<span>·</span>'}<span>${ago(i.published)}</span>` : ''}</div></div>
@@ -226,6 +226,7 @@
       e.preventDefault();
       item.starred = !item.starred;
       e.target.closest('.star').setAttribute('aria-pressed', item.starred);
+      card.classList.toggle('starred', item.starred);
       api(`items?id=eq.${item.id}`, { method: 'PATCH', body: { starred: item.starred }, prefer: 'return=minimal' })
         .then(refreshCounts).catch(() => { item.starred = !item.starred; render(); });
       return;
