@@ -61,7 +61,11 @@
   /* list */
   main { padding: 8px 0 64px; }
   .item { display: flex; gap: 8px; padding: 16px 0; border-bottom: 1px solid var(--line); }
-  .item a { flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+  .item a { flex: 1; min-width: 0; color: inherit; text-decoration: none; display: flex; gap: 14px; align-items: flex-start; }
+  .item .txt { flex: 1; min-width: 0; }
+  .thumb { flex: none; width: 128px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: var(--line); margin-top: 2px; }
+  .item.read .thumb { opacity: .55; }
+  @media (max-width: 520px) { .thumb { width: 96px; } }
   .meta { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
   .item.read .dot { visibility: hidden; }

@@ -50,6 +50,22 @@ const plain = html => decode(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 const summary = html => { const t = plain(decode(html)); return t.length > 280 ? t.slice(0, 277) + '…' : t; };
 const isFeed = text => /<(rss|feed|rdf:RDF)[\s>]/i.test(text);
 
+// Preview image: media:thumbnail / media:content / image enclosure / itunes:image, else the first <img> in the body.
+function findImage(b, link) {
+  const tagAttr = (re, a) => { const m = b.match(re); if (!m) return ''; const v = m[0].match(new RegExp(`\\b${a}\\s*=\\s*["']([^"']+)["']`, 'i')); return v ? decode(v[1]) : ''; };
+  let img = tagAttr(/<media:thumbnail\b[^>]*>/i, 'url')
+    || tagAttr(/<media:content\b[^>]*(?:medium=["']image["']|type=["']image\/)[^>]*>/i, 'url')
+    || tagAttr(/<enclosure\b[^>]*type=["']image\/[^>]*>/i, 'url')
+    || tagAttr(/<itunes:image\b[^>]*>/i, 'href');
+  if (!img) {
+    const html = decode(tag(b, 'content:encoded') || tag(b, 'content') || tag(b, 'description') || tag(b, 'summary'));
+    const m = html.match(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
+    if (m && !/(pixel|tracking|feedburner|1x1|spacer|gravatar|emoji)/i.test(m[1])) img = decode(m[1]);
+  }
+  if (!img) return null;
+  try { const u = new URL(img, link || undefined); return /^https?:$/.test(u.protocol) ? u.href : null; } catch { return null; }
+}
+
 function parse(xml, fallbackTitle) {
   const isAtom = /<feed[\s>]/i.test(xml) && !/<rss[\s>]/i.test(xml);
   const head = xml.split(/<(?:item|entry)[\s>]/i)[0];
@@ -65,6 +81,7 @@ function parse(xml, fallbackTitle) {
       link,
       published: Number.isNaN(t) ? null : new Date(t).toISOString(),
       summary: summary(body),
+      image: findImage(b, link),
     };
   }).filter(i => i.guid);
   return { title, items };
@@ -131,7 +148,7 @@ function scrapePage(html, pageUrl) {
     .filter(([, f]) => f.score >= min)
     .sort((a, b) => a[1].order - b[1].order)
     .slice(0, MAX_PER_FEED)
-    .map(([link, f]) => ({ guid: link, title: f.title, link, published: new Date().toISOString(), summary: '' }));
+    .map(([link, f]) => ({ guid: link, title: f.title, link, published: new Date().toISOString(), summary: '', image: null }));
   if (items.length < 3) throw new Error('No feed or articles found on this page');
   return { title, items };
 }

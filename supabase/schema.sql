@@ -24,6 +24,7 @@ create table if not exists public.items (
   title      text,
   link       text,
   summary    text,
+  image      text,                     -- preview image URL from the feed
   published  timestamptz,
   read       boolean not null default false,
   starred    boolean not null default false,

@@ -152,7 +152,7 @@
   let items = [];
   let feeds = [];
 
-  const FIELDS = 'id,feed_title,title,link,summary,published,read,starred';
+  const FIELDS = 'id,feed_title,title,link,summary,image,published,read,starred';
   const FILTER = { unread: '&read=is.false', starred: '&starred=is.true', all: '' };
 
   async function loadItems() {
@@ -195,9 +195,12 @@
     $('#list').innerHTML = items.map(i => `
       <article class="item ${i.read ? 'read' : ''}" data-id="${i.id}">
         <a href="${esc(safeUrl(i.link))}" target="_blank" rel="noopener noreferrer">
-          <div class="meta"><span class="dot"></span><span>${esc(i.feed_title)}</span>${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div>
-          <h2 class="title">${esc(i.title)}</h2>
-          ${i.summary ? `<p class="sum">${esc(i.summary)}</p>` : ''}
+          <div class="txt">
+            <div class="meta"><span class="dot"></span><span>${esc(i.feed_title)}</span>${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div>
+            <h2 class="title">${esc(i.title)}</h2>
+            ${i.summary ? `<p class="sum">${esc(i.summary)}</p>` : ''}
+          </div>
+          ${/^https:\/\//i.test(i.image || '') ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
         </a>
         <button class="icon-btn star" aria-label="Star" aria-pressed="${i.starred}"><svg fill="none"><use href="#i-star"/></svg></button>
       </article>`).join('');
