@@ -76,8 +76,37 @@
     else if (p.get('error_description')) $('#err').textContent = p.get('error_description').replace(/\+/g, ' ');
   }
 
+  // sign-in mode: emailed link (default) or email + password
+  let usePassword = store.get('signinMode', 'link') === 'password';
+  function setMode() {
+    $('#password').hidden = !usePassword;
+    $('#password').required = usePassword;
+    $('#signin .go').textContent = usePassword ? 'Sign in' : 'Email me a sign-in link';
+    $('#modeToggle').textContent = usePassword ? 'Email me a link instead' : 'Use a password instead';
+    $('#err').textContent = '';
+  }
+  $('#modeToggle').onclick = () => { usePassword = !usePassword; store.set('signinMode', usePassword ? 'password' : 'link'); setMode(); (usePassword ? $('#password') : $('#email')).focus(); };
+  setMode();
+
+  async function passwordSignIn() {
+    const btn = $('#signin .go'), err = $('#err');
+    err.className = 'err'; err.textContent = '';
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      const res = await fetch(`${BASE}/auth/v1/token?grant_type=password`, {
+        method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: $('#email').value.trim(), password: $('#password').value }),
+      });
+      if (res.ok) { saveSession(await res.json()); $('#password').value = ''; start(); return; }
+      err.textContent = res.status === 429 ? 'Too many tries. Wait a few minutes and try again.'
+        : 'Wrong email or password. If you haven’t set a password yet, use the emailed link first.';
+    } catch { err.textContent = 'Couldn’t reach the server.'; }
+    btn.disabled = false; setMode();
+  }
+
   $('#signin').onsubmit = async e => {
     e.preventDefault();
+    if (usePassword) return passwordSignIn();
     const btn = $('#signin .go'), err = $('#err');
     err.className = 'err'; err.textContent = '';
     btn.disabled = true; btn.textContent = 'Sending…';
@@ -92,6 +121,24 @@
       else err.textContent = 'That email isn’t set up for this reader.';
     } catch { err.textContent = 'Couldn’t reach the server.'; }
     btn.disabled = false; btn.textContent = 'Email me a sign-in link';
+  };
+
+  // set or change password (while signed in)
+  $('#pwForm').onsubmit = async e => {
+    e.preventDefault();
+    const msg = $('#pwMsg');
+    try {
+      const res = await fetch(`${BASE}/auth/v1/user`, {
+        method: 'PUT',
+        headers: { apikey: KEY, Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: $('#newPw').value }),
+      });
+      if (res.ok) { $('#newPw').value = ''; msg.textContent = 'Password saved. You can now sign in with your email and password.'; store.set('signinMode', 'password'); }
+      else {
+        const body = await res.json().catch(() => ({}));
+        msg.textContent = body.msg || body.error_description || 'Couldn’t save that password. Try a longer one.';
+      }
+    } catch { msg.textContent = 'Couldn’t reach the server.'; }
   };
 
   async function signOut() {
