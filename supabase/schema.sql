@@ -1,4 +1,5 @@
 -- Feeds reader schema. Run once in the Supabase SQL editor (or apply as a migration).
+-- (feeds.kind: "feed" or "page", set by the fetcher)
 -- Every row belongs to a user; row-level security means each person only ever sees their own data.
 
 create table if not exists public.feeds (
@@ -9,6 +10,7 @@ create table if not exists public.feeds (
   title        text,
   last_fetched timestamptz,
   last_error   text,
+  kind         text check (kind in ('feed','page')),
   created_at   timestamptz not null default now(),
   unique (user_id, url)
 );

@@ -80,19 +80,77 @@ async function get(url) {
   return { text: await res.text(), url: res.url || url };
 }
 
-// Accepts a feed address or a normal website; for a website, finds its advertised feed.
+// ---- page fallback: pull article headlines from a site that has no feed ----
+const SKIP_PATH = /\/(tag|tags|category|categories|topic|topics|author|authors|about|contact|privacy|terms|login|signin|signup|register|subscribe|account|search|cart|shop|help|faq|careers|jobs|newsletter|advertise|sitemap)(\/|$)|\.(jpe?g|png|gif|svg|pdf|zip|mp3|mp4)$/i;
+const SKIP_TEXT = /^(read more|more|continue reading|learn more|see all|view all|home|menu|next|previous|older|newer|share|comments?|\d+)$/i;
+const attrOf = (tagHtml, name) => { const m = tagHtml.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, 'i')); return m ? decode(m[1]) : ''; };
+
+function scrapePage(html, pageUrl) {
+  const base = new URL(pageUrl);
+  const body = html.replace(/<(script|style|noscript|svg|template)\b[\s\S]*?<\/\1>/gi, ' ')
+                   .replace(/<(nav|footer|aside)\b[\s\S]*?<\/\1>/gi, ' ')
+                   .replace(/<!--[\s\S]*?-->/g, ' ');
+  const meta = n => { const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${n}["'][^>]*>`, 'i')); return m ? attrOf(m[0], 'content') : ''; };
+  const title = plain(meta('og:site_name') || tag(html, 'title').split(/\s[|–—-]\s/)[0] || base.hostname);
+
+  const found = new Map(); // url -> {title, score, order}
+  let order = 0;
+  const consider = (aHtml, inner, score) => {
+    const href = attrOf(aHtml, 'href');
+    if (!href || href.startsWith('#') || /^(mailto|tel|javascript):/i.test(href)) return;
+    let u; try { u = new URL(href, base); } catch { return; }
+    if (!/^https?:$/.test(u.protocol)) return;
+    if (u.hostname.replace(/^www\./, '') !== base.hostname.replace(/^www\./, '')) return;
+    u.hash = '';
+    if (u.href === base.href || u.pathname === '/' || SKIP_PATH.test(u.pathname)) return;
+    const text = plain(inner);
+    if (text.length < 15 || text.length > 200 || SKIP_TEXT.test(text)) return;
+    // article-looking paths: dated, slugged, or nested
+    const p = u.pathname;
+    if (/\/\d{4}\/\d{1,2}\//.test(p) || /-[^/]*-[^/]*-/.test(p) || p.split('/').filter(Boolean).length >= 2) score += 1;
+    const prev = found.get(u.href);
+    if (!prev || score > prev.score) found.set(u.href, { title: text, score, order: prev ? prev.order : order++ });
+  };
+
+  // links inside headings are the strongest signal
+  for (const h of body.match(/<h[1-4]\b[^>]*>[\s\S]*?<\/h[1-4]>/gi) || []) {
+    for (const m of h.matchAll(/(<a\b[^>]*>)([\s\S]*?)<\/a>/gi)) consider(m[1], m[2], 3);
+  }
+  // links inside <article> blocks, or with headline-ish classes
+  for (const art of body.match(/<article\b[\s\S]*?<\/article>/gi) || []) {
+    for (const m of art.matchAll(/(<a\b[^>]*>)([\s\S]*?)<\/a>/gi)) consider(m[1], m[2], 2);
+  }
+  for (const m of body.matchAll(/(<a\b[^>]*>)([\s\S]*?)<\/a>/gi)) {
+    const cls = attrOf(m[1], 'class');
+    consider(m[1], m[2], /title|headline|post|story|entry|article|card/i.test(cls) ? 2 : 0);
+  }
+
+  const best = Math.max(0, ...[...found.values()].map(f => f.score));
+  const min = best >= 3 ? 3 : best >= 2 ? 2 : 1;   // keep only the strongest tier available
+  const items = [...found.entries()]
+    .filter(([, f]) => f.score >= min)
+    .sort((a, b) => a[1].order - b[1].order)
+    .slice(0, MAX_PER_FEED)
+    .map(([link, f]) => ({ guid: link, title: f.title, link, published: new Date().toISOString(), summary: '' }));
+  if (items.length < 3) throw new Error('No feed or articles found on this page');
+  return { title, items };
+}
+
+// Accepts a feed address or a normal website; for a website, finds its advertised feed,
+// and if it has none, reads the page itself for article headlines.
 async function load(feed) {
   let { text, url } = await get(feed.feed_url || feed.url);
   if (!isFeed(text)) {
     const links = text.match(/<link\b[^>]*>/gi) || [];
     const alt = links.find(l => /rel=["']?alternate/i.test(l) && /application\/(rss|atom)\+xml/i.test(l));
     const href = alt && alt.match(/href=["']([^"']+)["']/i);
-    if (!href) throw new Error('No feed found at this address');
-    url = new URL(decode(href[1]), url).href;
-    ({ text, url } = await get(url));
-    if (!isFeed(text)) throw new Error('No feed found at this address');
+    if (!href) return { url, kind: 'page', ...scrapePage(text, url) };
+    const feedUrl = new URL(decode(href[1]), url).href;
+    const page = { text, url };
+    ({ text, url } = await get(feedUrl));
+    if (!isFeed(text)) return { url: page.url, kind: 'page', ...scrapePage(page.text, page.url) };
   }
-  return { url, ...parse(text, new URL(url).hostname) };
+  return { url, kind: 'feed', ...parse(text, new URL(url).hostname) };
 }
 
 // ---- run ----
@@ -101,7 +159,7 @@ let saved = 0, failed = 0;
 
 await Promise.all(feeds.map(async feed => {
   try {
-    const { url, title, items } = await load(feed);
+    const { url, kind, title, items } = await load(feed);
     if (items.length) {
       await db('items?on_conflict=feed_id,guid', {
         method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal',
@@ -110,7 +168,7 @@ await Promise.all(feeds.map(async feed => {
     }
     await db(`feeds?id=eq.${feed.id}`, {
       method: 'PATCH', prefer: 'return=minimal',
-      body: { feed_url: url, title, last_fetched: new Date().toISOString(), last_error: null },
+      body: { feed_url: url, kind, title, last_fetched: new Date().toISOString(), last_error: null },
     });
     saved += items.length;
   } catch (e) {

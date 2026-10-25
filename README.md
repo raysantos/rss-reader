@@ -4,7 +4,7 @@ A private, no-frills RSS/Atom reader. The page is a static site on GitHub Pages,
 
 - **No dependencies.** Plain HTML/JS and a plain Node script. No build step, no libraries.
 - **Private.** You sign in with an emailed magic link, once per device. Row-level security means the database only returns your own rows. Nothing personal is stored in this repo.
-- **Manage feeds in the page.** Paste a feed address or just a website, and the fetcher finds the site's feed.
+- **Manage feeds in the page.** Paste a feed address or just a website. The fetcher finds the site's feed, and if it has none, it reads the page for article headlines (labeled "Web page").
 - **Features:** unread tracking, starring, mark all read, and a light/dark toggle.
 
 ## How it works

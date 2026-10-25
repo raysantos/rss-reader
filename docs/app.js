@@ -167,7 +167,7 @@
     } catch {}
   }
   async function loadFeeds() {
-    feeds = await api('feeds?select=id,url,feed_url,title,last_fetched,last_error&order=created_at.asc');
+    feeds = await api('feeds?select=id,url,feed_url,kind,title,last_fetched,last_error&order=created_at.asc');
     renderFeeds(); renderFoot();
   }
 
@@ -249,7 +249,7 @@
     $('#feedList').innerHTML = feeds.map(f => {
       const status = f.last_error ? `<div class="sub bad">${esc(f.last_error)}</div>`
         : !f.last_fetched ? `<div class="sub">Waiting for first check</div>`
-        : `<div class="sub">${esc(host(f.feed_url || f.url))} · checked ${ago(f.last_fetched)} ago</div>`;
+        : `<div class="sub">${f.kind === 'page' ? 'Web page · ' : ''}${esc(host(f.feed_url || f.url))} · checked ${ago(f.last_fetched)} ago</div>`;
       return `<li class="feed-row" data-id="${f.id}">
         <div class="txt"><div class="name">${esc(f.title || host(f.url))}</div>${status}</div>
         <button class="icon-btn del" aria-label="Remove ${esc(f.title || host(f.url))}" title="Remove"><svg><use href="#i-trash"/></svg></button>
