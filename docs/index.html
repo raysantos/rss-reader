@@ -94,6 +94,10 @@
   .star { position: absolute; top: 8px; right: 8px; color: #fff; background: rgb(0 0 0 / .38); backdrop-filter: blur(6px); width: 32px; height: 32px; border-radius: 9px; }
   .star svg { width: 17px; height: 17px; }
   .star:hover { background: rgb(0 0 0 / .55); color: #fff; }
+  .star { opacity: 0; transform: translateY(8px); transition: opacity .22s ease-in, transform .22s ease-in; }
+  .item:hover .star, .item:focus-within .star, .star[aria-pressed="true"] { opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) { .star { transition: opacity .15s; transform: none; } }
+  @media (hover: none) { .star { opacity: 1; transform: none; } }
   .star[aria-pressed="true"] { color: var(--star); }
   .star[aria-pressed="true"] svg { fill: currentColor; }
   .src { cursor: pointer; border-radius: 4px; }
