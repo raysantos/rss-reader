@@ -159,6 +159,10 @@ let saved = 0, failed = 0;
 const CONCURRENCY = 8;          // be polite: check a few feeds at a time
 const FIRST_UNREAD = 3;         // a brand-new feed only marks its newest few items unread
 
+// Postgres rejects NUL characters and broken emoji halves in text; strip them.
+const tidy = v => typeof v === 'string' ? v.replace(/\u0000/g, '').toWellFormed() : v;
+const clean = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, tidy(v)]));
+
 async function check(feed) {
   try {
     const { url, kind, title, items } = await load(feed);
@@ -168,14 +172,14 @@ async function check(feed) {
       await db('items?on_conflict=feed_id,guid', {
         method: 'POST', prefer: 'resolution=ignore-duplicates,return=minimal',
         body: newestFirst.map((i, n) => ({
-          ...i, user_id: feed.user_id, feed_id: feed.id, feed_title: title,
+          ...clean(i), user_id: feed.user_id, feed_id: feed.id, feed_title: title,
           read: firstTime && n >= FIRST_UNREAD,
         })),
       });
     }
     await db(`feeds?id=eq.${feed.id}`, {
       method: 'PATCH', prefer: 'return=minimal',
-      body: { feed_url: url, kind, title, last_fetched: new Date().toISOString(), last_error: null },
+      body: { feed_url: url, kind, title: tidy(title), last_fetched: new Date().toISOString(), last_error: null },
     });
     saved += items.length;
   } catch (e) {
