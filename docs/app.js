@@ -197,9 +197,9 @@
     $('#list').innerHTML = items.map(i => `
       <article class="item ${i.read ? 'read' : ''}" data-id="${i.id}">
         <a href="${esc(safeUrl(i.link))}" target="_blank" rel="noopener noreferrer">
-          ${/^https:\/\//i.test(i.image || '') ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.removeAttribute('src');this.classList.add('ph')">` : '<div class="thumb ph"></div>'}
+          <div class="media">${/^https:\/\//i.test(i.image || '') ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.removeAttribute('src');this.classList.add('ph')">` : '<div class="thumb ph"></div>'}
+            <div class="meta"><span class="dot"></span>${i.feed_id ? `<span class="src" data-feed="${i.feed_id}" title="Show only ${esc(i.feed_title)}">${esc(i.feed_title)}</span>` : `<span>${esc(i.feed_title)}</span>`}${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div></div>
           <div class="txt">
-            <div class="meta"><span class="dot"></span>${i.feed_id ? `<span class="src" data-feed="${i.feed_id}" title="Show only ${esc(i.feed_title)}">${esc(i.feed_title)}</span>` : `<span>${esc(i.feed_title)}</span>`}${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div>
             <h2 class="title">${esc(i.title)}</h2>
           </div>
         </a>
