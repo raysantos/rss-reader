@@ -195,7 +195,7 @@
     $('#list').innerHTML = items.map(i => `
       <article class="item ${i.read ? 'read' : ''}" data-id="${i.id}">
         <a href="${esc(safeUrl(i.link))}" target="_blank" rel="noopener noreferrer">
-          ${/^https:\/\//i.test(i.image || '') ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+          ${/^https:\/\//i.test(i.image || '') ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.removeAttribute('src');this.classList.add('ph')">` : '<div class="thumb ph"></div>'}
           <div class="txt">
             <div class="meta"><span class="dot"></span><span>${esc(i.feed_title)}</span>${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div>
             <h2 class="title">${esc(i.title)}</h2>
@@ -247,8 +247,18 @@
   $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
   addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
 
+  let feedQuery = '';
+  $('#feedSearch').addEventListener('input', e => { feedQuery = e.target.value.trim().toLowerCase(); renderFeeds(); });
+
   function renderFeeds() {
-    $('#feedList').innerHTML = feeds.map(f => {
+    const name = f => f.title || host(f.url);
+    const shown = feeds
+      .filter(f => !feedQuery || `${name(f)} ${f.url} ${f.feed_url || ''}`.toLowerCase().includes(feedQuery))
+      .sort((a, b) => (!!b.last_error - !!a.last_error) || name(a).localeCompare(name(b), undefined, { sensitivity: 'base' }));
+    $('#feedSearch').placeholder = `Search your ${feeds.length} feed${feeds.length === 1 ? '' : 's'}`;
+    $('#feedSearchWrap').hidden = feeds.length < 6;
+    if (!shown.length) { $('#feedList').innerHTML = `<li class="tip" style="padding:12px 0">${feeds.length ? `Nothing matches “${esc(feedQuery)}”.` : 'No feeds yet.'}</li>`; return; }
+    $('#feedList').innerHTML = shown.map(f => {
       const status = f.last_error ? `<div class="sub bad">${esc(f.last_error)}</div>`
         : !f.last_fetched ? `<div class="sub">Waiting for first check</div>`
         : `<div class="sub">${f.kind === 'page' ? 'Web page · ' : ''}${esc(host(f.feed_url || f.url))} · checked ${ago(f.last_fetched)} ago</div>`;
@@ -256,7 +266,7 @@
         <div class="txt"><div class="name">${esc(f.title || host(f.url))}</div>${status}</div>
         <button class="icon-btn del" aria-label="Remove ${esc(f.title || host(f.url))}" title="Remove"><svg><use href="#i-trash"/></svg></button>
       </li>`;
-    }).join('') || '<li class="tip" style="padding:12px 0">No feeds yet.</li>';
+    }).join('');
   }
 
   $('#addForm').onsubmit = async e => {

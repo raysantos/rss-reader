@@ -37,7 +37,7 @@
     -webkit-font-smoothing: antialiased;
   }
   button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
 
   /* header */
   header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); }
@@ -60,14 +60,16 @@
 
   /* list */
   main { padding: 8px 0 64px; }
-  .item { display: flex; gap: 8px; padding: 16px 0; border-bottom: 1px solid var(--line); }
-  .item a { flex: 1; min-width: 0; color: inherit; text-decoration: none; display: flex; gap: 14px; align-items: flex-start; }
-  .item .txt { flex: 1; min-width: 0; }
-  .item a { align-items: center; gap: 16px; }
-  .thumb { flex: none; width: 208px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; background: var(--line); }
+  #list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 20px; padding-top: 16px; }
+  @media (max-width: 900px) { #list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { #list { grid-template-columns: 1fr; gap: 22px; } }
+  #list > .empty { grid-column: 1 / -1; }
+  .item { position: relative; min-width: 0; }
+  .item a { display: block; color: inherit; text-decoration: none; }
+  .thumb { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; background: var(--line); margin-bottom: 10px; }
+  .thumb.ph { background: linear-gradient(135deg, var(--accent-soft), var(--line)); }
   .item.read .thumb { opacity: .55; }
-  .item .title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-  @media (max-width: 520px) { .thumb { width: 136px; border-radius: 8px; } .item a { gap: 12px; } .item .title { font-size: 15.5px; } }
+  .item .title { font-size: 16px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 4px 0 0; padding-right: 4px; }
   .meta { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
   .item.read .dot { visibility: hidden; }
@@ -76,7 +78,8 @@
   .sum { color: var(--muted); font-size: 14.5px; margin: 0;
          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .item a:hover .title { color: var(--accent); }
-  .star { align-self: center; color: var(--muted); }
+  .star { position: absolute; top: 8px; right: 8px; color: #fff; background: rgb(0 0 0 / .38); backdrop-filter: blur(6px); width: 36px; height: 36px; border-radius: 10px; }
+  .star:hover { background: rgb(0 0 0 / .55); color: #fff; }
   .star[aria-pressed="true"] { color: var(--star); }
   .star[aria-pressed="true"] svg { fill: currentColor; }
   .empty { text-align: center; color: var(--muted); padding: 64px 0; }
@@ -172,6 +175,9 @@
       <label class="btn ghost" for="importFile" style="cursor:pointer">Import a file</label>
       <input type="file" id="importFile" accept=".csv,.opml,.xml,text/csv,text/xml" hidden>
       <span class="tip" style="margin:0">YouTube subscriptions (from Google Takeout) or an OPML export from another reader.</span>
+    </div>
+    <div id="feedSearchWrap" class="add" style="margin-top:8px" hidden>
+      <input type="search" id="feedSearch" placeholder="Search your feeds" aria-label="Search your feeds" autocomplete="off">
     </div>
     <ul class="feed-list" id="feedList"></ul>
     <p class="msg" id="sheetMsg" role="status"></p>
