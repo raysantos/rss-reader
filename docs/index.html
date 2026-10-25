@@ -103,6 +103,26 @@
   .chip:hover { opacity: .85; }
   .feed-row button.name { display: block; max-width: 100%; text-align: left; padding: 0; }
   .feed-row button.name:hover { color: var(--accent); }
+  .item { container-type: inline-size; }
+  .media .meta { max-width: calc(100% - 60px); }
+  .unsub {
+    position: absolute; right: 8px; top: calc(100cqw * 9 / 16 - 40px);
+    width: 32px; height: 32px; border-radius: 9px; color: #fff;
+    background: rgb(0 0 0 / .52); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    opacity: 0; transition: opacity .15s;
+  }
+  .unsub svg { width: 18px; height: 18px; }
+  .item:hover .unsub, .item:focus-within .unsub { opacity: 1; }
+  .unsub:hover { background: #c2410c; color: #fff; }
+  @media (hover: none) { .unsub { opacity: 1; } }
+
+  .modal { border: 0; padding: 0; border-radius: 16px; background: var(--surface); color: var(--text); width: min(400px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgb(0 0 0 / .3); }
+  .modal::backdrop { background: rgb(0 0 0 / .45); }
+  .modal form { padding: 22px 22px 18px; }
+  .modal h3 { margin: 0 0 6px; font-size: 18px; }
+  .modal p { margin: 0 0 20px; color: var(--muted); font-size: 15px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .btn.danger { background: #c2410c; }
   .empty { text-align: center; color: var(--muted); padding: 64px 0; }
   .foot { font-size: 13px; color: var(--muted); padding-top: 24px; }
   .foot details { margin-top: 8px; }
@@ -162,6 +182,7 @@
   <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
   <symbol id="i-rss" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="18" r="1.6" fill="currentColor" stroke="none"/><path d="M5 11a8 8 0 0 1 8 8M5 5a14 14 0 0 1 14 14"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-unsub" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12h7"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
   <symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></symbol>
 </svg>
@@ -238,6 +259,17 @@
     <div class="foot" id="foot"></div>
   </main>
 </div>
+
+<dialog id="confirm" class="modal" aria-labelledby="cTitle">
+  <form method="dialog">
+    <h3 id="cTitle"></h3>
+    <p id="cText"></p>
+    <div class="modal-actions">
+      <button class="btn ghost" value="cancel">Cancel</button>
+      <button class="btn danger" value="ok" id="cOk">Unsubscribe</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="config.js"></script>
 <script src="app.js"></script>

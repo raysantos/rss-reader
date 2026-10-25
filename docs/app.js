@@ -198,12 +198,13 @@
       <article class="item ${i.read ? 'read' : ''}" data-id="${i.id}">
         <a href="${esc(safeUrl(i.link))}" target="_blank" rel="noopener noreferrer">
           <div class="media">${/^https:\/\//i.test(i.image || '') ? `<img class="thumb" src="${esc(i.image)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.removeAttribute('src');this.classList.add('ph')">` : '<div class="thumb ph"></div>'}
-            <div class="meta"><span class="dot"></span>${i.feed_id ? `<span class="src" data-feed="${i.feed_id}" title="Show only ${esc(i.feed_title)}">${esc(i.feed_title)}</span>` : `<span>${esc(i.feed_title)}</span>`}${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div></div>
+            <div class="meta"><span class="dot"></span>${feedFilter ? '' : i.feed_id ? `<span class="src" data-feed="${i.feed_id}" title="Show only ${esc(i.feed_title)}">${esc(i.feed_title)}</span>` : `<span>${esc(i.feed_title)}</span>`}${i.published ? `${feedFilter ? '' : '<span>·</span>'}<span>${ago(i.published)}</span>` : ''}</div></div>
           <div class="txt">
             <h2 class="title">${esc(i.title)}</h2>
           </div>
         </a>
         <button class="icon-btn star" aria-label="Star" aria-pressed="${i.starred}"><svg fill="none"><use href="#i-star"/></svg></button>
+        ${i.feed_id ? `<button class="icon-btn unsub" aria-label="Unsubscribe from ${esc(i.feed_title)}" title="Unsubscribe from ${esc(i.feed_title)}"><svg><use href="#i-unsub"/></svg></button>` : ''}
       </article>`).join('');
   }
   function renderFoot() {
@@ -220,6 +221,7 @@
     const card = e.target.closest('.item'); if (!card) return;
     const item = items.find(i => String(i.id) === card.dataset.id); if (!item) return;
     if (e.target.closest('.src')) { e.preventDefault(); showFeed(item.feed_id, item.feed_title); return; }
+    if (e.target.closest('.unsub')) { e.preventDefault(); unsubscribe(item.feed_id, item.feed_title); return; }
     if (e.target.closest('.star')) {
       e.preventDefault();
       item.starred = !item.starred;
@@ -249,7 +251,39 @@
     scrollTo(0, 0); loadItems().catch(fail);
   }
   $('#feedChip').onclick = clearFeed;
-  addEventListener('keydown', e => { if (e.key === 'Escape' && feedFilter && $('#sheet').hidden) clearFeed(); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && feedFilter && $('#sheet').hidden && !$('#confirm').open) clearFeed(); });
+
+  // ---- confirmation modal ----
+  function confirmModal({ title, text, ok = 'Unsubscribe' }) {
+    const dlg = $('#confirm');
+    $('#cTitle').textContent = title; $('#cText').textContent = text; $('#cOk').textContent = ok;
+    dlg.returnValue = '';
+    return new Promise(resolve => {
+      const onClick = e => { if (e.target === dlg) dlg.close('cancel'); };   // click outside = cancel
+      dlg.addEventListener('click', onClick);
+      dlg.addEventListener('close', () => { dlg.removeEventListener('click', onClick); resolve(dlg.returnValue === 'ok'); }, { once: true });
+      dlg.showModal();
+      $('#cOk').focus();
+    });
+  }
+
+  // ---- unsubscribe (from a card or the feeds panel) ----
+  async function unsubscribe(id, name) {
+    name = name || 'this feed';
+    const ok = await confirmModal({ title: `Unsubscribe from ${name}?`, text: 'Its articles and videos will be removed from your reader. Anything you starred is kept.' });
+    if (!ok) return false;
+    try {
+      await api(`items?feed_id=eq.${id}&starred=is.false`, { method: 'DELETE', prefer: 'return=minimal' });
+      await api(`feeds?id=eq.${id}`, { method: 'DELETE', prefer: 'return=minimal' });
+    } catch { alertMsg(`Couldn’t unsubscribe from ${name}. Try again.`); return false; }
+    feeds = feeds.filter(f => f.id !== id);
+    items = items.filter(i => i.feed_id !== id || i.starred);
+    if (feedFilter && feedFilter.id === id) clearFeed(); else render();
+    refreshCounts(); renderFoot();
+    if (!$('#sheet').hidden) renderFeeds();
+    return true;
+  }
+  function alertMsg(m) { const el = $('#sheet').hidden ? null : $('#sheetMsg'); if (el) el.textContent = m; else console.warn(m); }
 
   document.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; scrollTo(0, 0); loadItems().catch(fail); });
   $('#markAll').onclick = async () => {
@@ -362,12 +396,7 @@
   $('#feedList').addEventListener('click', async e => {
     const btn = e.target.closest('.del'); if (!btn) return;
     const f = feeds.find(x => String(x.id) === btn.closest('.feed-row').dataset.id);
-    if (!f || !confirm(`Remove ${f.title || host(f.url)}? Starred articles from it are kept.`)) return;
-    try {
-      await api(`items?feed_id=eq.${f.id}&starred=is.false`, { method: 'DELETE', prefer: 'return=minimal' });
-      await api(`feeds?id=eq.${f.id}`, { method: 'DELETE', prefer: 'return=minimal' });
-      loadFeeds();
-    } catch { $('#sheetMsg').textContent = 'Couldn’t remove it. Try again.'; }
+    if (f) unsubscribe(f.id, f.title || host(f.url));
   });
 
   // ---- start ----
