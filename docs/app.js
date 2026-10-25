@@ -229,6 +229,11 @@
       card.classList.toggle('starred', item.starred);
       api(`items?id=eq.${item.id}`, { method: 'PATCH', body: { starred: item.starred }, prefer: 'return=minimal' })
         .then(refreshCounts).catch(() => { item.starred = !item.starred; render(); });
+      // In the Starred view, an unstarred card waits 3s (so you can undo), then slides away.
+      clearTimeout(leaveTimers.get(item.id)); leaveTimers.delete(item.id);
+      if (view === 'starred' && !item.starred) {
+        leaveTimers.set(item.id, setTimeout(() => { leaveTimers.delete(item.id); if (!item.starred) slideAway(card, item); }, 3000));
+      }
       return;
     }
     const vid = ytId(item.link);
@@ -241,6 +246,30 @@
         .then(refreshCounts).catch(() => {});
     }
   });
+
+  // ---- slide a card out and let the others glide into place (FLIP) ----
+  const leaveTimers = new Map();
+  function slideAway(card, item) {
+    if (!card.isConnected) return;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const finish = () => {
+      const others = [...document.querySelectorAll('#list > .item, #list > .player')].filter(c => c !== card);
+      const before = new Map(others.map(c => [c, c.getBoundingClientRect()]));
+      card.remove();
+      items = items.filter(i => i !== item);
+      if (!items.length) { render(); return; }
+      if (reduce) return;
+      for (const c of others) {
+        const a = before.get(c), b = c.getBoundingClientRect();
+        const dx = a.left - b.left, dy = a.top - b.top;
+        if (!dx && !dy) continue;
+        c.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 380, easing: 'ease-in-out' });
+      }
+    };
+    if (reduce) return finish();
+    card.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-16px) scale(.96)' }],
+      { duration: 280, easing: 'ease-in', fill: 'forwards' }).onfinish = finish;
+  }
 
   // ---- one-source view ----
   function showFeed(id, title) {
@@ -342,7 +371,7 @@
   }
   function alertMsg(m) { const el = $('#sheet').hidden ? null : $('#sheetMsg'); if (el) el.textContent = m; else console.warn(m); }
 
-  document.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; scrollTo(0, 0); loadItems().catch(fail); });
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => { leaveTimers.forEach(clearTimeout); leaveTimers.clear(); view = t.dataset.view; scrollTo(0, 0); loadItems().catch(fail); });
   $('#markAll').onclick = async () => {
     if (!confirm('Mark everything as read?')) return;
     await api('items?read=is.false', { method: 'PATCH', body: { read: true }, prefer: 'return=minimal' }).catch(fail);
