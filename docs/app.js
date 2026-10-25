@@ -272,39 +272,41 @@
     if (instant) { p.remove(); return; }
     p.classList.remove('open');
     p.addEventListener('transitionend', () => p.remove(), { once: true });
-    setTimeout(() => p.remove(), 500);
+    setTimeout(() => p.remove(), 600);
   }
   function openPlayer(card, item, vid) {
-    const same = card.classList.contains('playing');
-    closePlayer(true);
-    if (same) return;   // clicking the playing card again closes it
-    // find the last card in this card's row so the player spans the full row underneath
-    const cards = [...document.querySelectorAll('#list > .item')];
-    const top = card.offsetTop;
-    const rowEnd = cards.filter(c => Math.abs(c.offsetTop - top) < 4).pop() || card;
-    const p = document.createElement('section');
-    p.className = 'player';
-    p.setAttribute('aria-label', `Playing ${item.title}`);
-    p.innerHTML = `<div class="player-inner">
-      <div class="player-frame">
-        <iframe src="https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&rel=0&modestbranding=1&playsinline=1"
-          title="${esc(item.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen
-          referrerpolicy="strict-origin-when-cross-origin"></iframe>
-      </div>
-      <div class="player-bar">
-        <div class="player-text"><div class="player-src">${esc(item.feed_title || '')}</div><div class="player-title">${esc(item.title)}</div></div>
-        <a class="btn ghost" href="${esc(safeUrl(item.link))}" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
-        <button class="icon-btn player-close" aria-label="Close player"><svg><use href="#i-x"/></svg></button>
-      </div>
-    </div>`;
-    rowEnd.after(p);
+    if (card.classList.contains('playing')) { closePlayer(); return; }   // same card again closes it
+    document.querySelectorAll('.item.playing').forEach(c => c.classList.remove('playing'));
     card.classList.add('playing');
-    p.querySelector('.player-close').onclick = () => closePlayer();
-    requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add('open')));
-    setTimeout(() => {
-      const r = p.getBoundingClientRect(), head = document.querySelector('header').offsetHeight;
-      if (r.top < head || r.bottom > innerHeight) scrollTo({ top: scrollY + r.top - head - 12, behavior: 'smooth' });
-    }, 380);
+    const src = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    let p = document.querySelector('.player');
+    if (p) {
+      // already open: swap the video in place
+      p.querySelector('iframe').src = src;
+      p.querySelector('iframe').title = item.title;
+      p.querySelector('.player-src').textContent = item.feed_title || '';
+      p.querySelector('.player-title').textContent = item.title;
+      p.querySelector('.player-open').href = safeUrl(item.link);
+    } else {
+      p = document.createElement('section');
+      p.className = 'player';
+      p.innerHTML = `<div class="player-inner"><div class="player-body">
+        <div class="player-frame">
+          <iframe src="${src}" title="${esc(item.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen
+            referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        </div>
+        <div class="player-bar">
+          <div class="player-text"><div class="player-src">${esc(item.feed_title || '')}</div><div class="player-title">${esc(item.title)}</div></div>
+          <a class="btn ghost player-open" href="${esc(safeUrl(item.link))}" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+          <button class="icon-btn player-close" aria-label="Close player"><svg><use href="#i-x"/></svg></button>
+        </div>
+      </div></div>`;
+      $('#list').before(p);
+      p.querySelector('.player-close').onclick = () => closePlayer();
+      requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add('open')));
+    }
+    p.setAttribute('aria-label', `Playing ${item.title}`);
+    scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   // ---- confirmation modal ----
