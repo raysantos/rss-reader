@@ -37,7 +37,8 @@
     -webkit-font-smoothing: antialiased;
   }
   button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  .wrap { max-width: none; margin: 0; padding: 0 16px; }
+  @media (min-width: 900px) { .wrap { padding: 0 28px; } }
 
   /* header */
   header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); }
@@ -61,6 +62,8 @@
   /* list */
   main { padding: 8px 0 64px; }
   #list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px 16px; padding-top: 16px; }
+  @media (min-width: 1600px) { #list { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+  @media (min-width: 2100px) { #list { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
   @media (max-width: 1050px) { #list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   @media (max-width: 760px) { #list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 480px) { #list { grid-template-columns: 1fr; gap: 20px; } }
@@ -137,9 +140,10 @@
   .player-inner { overflow: hidden; min-height: 0; }
   .player-body { padding-top: 16px; transform: translateY(-24px); opacity: 0; transition: transform .42s ease-in-out, opacity .32s ease-in-out; }
   .player.open .player-body { transform: none; opacity: 1; }
-  .player-frame { max-width: 1000px; margin: 0 auto; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #000; }
+  .player { container-type: inline-size; }
+  .player-frame { width: 100%; height: min(calc(100cqw * 9 / 16), calc(100svh - 230px)); min-height: 180px; border-radius: 14px; overflow: hidden; background: #000; }
   .player-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
-  .player-bar { max-width: 1000px; margin: 10px auto 4px; display: flex; align-items: center; gap: 12px; }
+  .player-bar { margin: 10px 0 4px; display: flex; align-items: center; gap: 12px; }
   .player-text { flex: 1; min-width: 0; }
   .player-src { font-size: 13px; color: var(--muted); }
   .player-title { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
