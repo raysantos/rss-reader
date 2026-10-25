@@ -1,6 +1,9 @@
-// Feeds reader: decrypts data.enc.json in the browser, tracks read/starred locally.
+// Feeds reader: Supabase-backed, no libraries. Auth + data go straight to Supabase's REST API.
 (() => {
   const $ = s => document.querySelector(s);
+  const CFG = window.FEEDS_CONFIG || {};
+  const BASE = (CFG.supabaseUrl || '').replace(/\/$/, '');
+  const KEY = CFG.publishableKey || '';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
@@ -12,69 +15,115 @@
   const savedTheme = store.get('theme', null);
   if (savedTheme) root.dataset.theme = savedTheme;
   $('#theme').onclick = () => {
-    const dark = root.dataset.theme
-      ? root.dataset.theme === 'dark'
-      : matchMedia('(prefers-color-scheme: dark)').matches;
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
     root.dataset.theme = dark ? 'light' : 'dark';
     store.set('theme', root.dataset.theme);
   };
 
-  // ---- state ----
-  let items = [];
-  let meta = {};
-  let view = 'unread';
-  const read = new Set(store.get('read', []));
-  const starred = store.get('starred', {}); // id -> full item, so stars survive items aging out
+  // ---- auth ----
+  let session = store.get('session', null);
 
-  const save = () => {
-    // only keep read ids that still exist, so storage stays small
-    const live = new Set(items.map(i => i.id));
-    store.set('read', [...read].filter(id => live.has(id)));
-    store.set('starred', starred);
+  function saveSession(s) {
+    session = {
+      access_token: s.access_token,
+      refresh_token: s.refresh_token,
+      expires_at: s.expires_at ? +s.expires_at : Math.floor(Date.now() / 1000) + (+s.expires_in || 3600),
+    };
+    store.set('session', session);
+  }
+  function clearSession() { session = null; store.del('session'); }
+
+  async function refresh() {
+    if (!session?.refresh_token) throw new Error('signedout');
+    const res = await fetch(`${BASE}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+    });
+    if (!res.ok) { clearSession(); throw new Error('signedout'); }
+    saveSession(await res.json());
+  }
+  async function token() {
+    if (!session) throw new Error('signedout');
+    if (session.expires_at - 60 < Date.now() / 1000) await refresh();
+    return session.access_token;
+  }
+
+  // Supabase REST helper. Retries once after refreshing an expired login.
+  async function api(path, { method = 'GET', body, prefer, retried } = {}) {
+    const res = await fetch(`${BASE}/rest/v1/${path}`, {
+      method, body: body && JSON.stringify(body),
+      headers: {
+        apikey: KEY, Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json',
+        ...(prefer ? { Prefer: prefer } : {}),
+      },
+    });
+    if (res.status === 401 && !retried) { await refresh(); return api(path, { method, body, prefer, retried: true }); }
+    if (!res.ok) { const e = new Error(await res.text()); e.status = res.status; throw e; }
+    if (method === 'HEAD') return res;
+    return res.status === 204 || res.headers.get('content-length') === '0' ? null : res.json().catch(() => null);
+  }
+  async function count(filter) {
+    const res = await api(`items?select=id&${filter}`, { method: 'HEAD', prefer: 'count=exact' });
+    return +(res.headers.get('content-range') || '').split('/')[1] || 0;
+  }
+
+  // Coming back from the emailed link: #access_token=...&refresh_token=...
+  function readRedirect() {
+    if (!location.hash.includes('=')) return;
+    const p = new URLSearchParams(location.hash.slice(1));
+    history.replaceState(null, '', location.pathname + location.search);
+    if (p.get('access_token')) saveSession(Object.fromEntries(p));
+    else if (p.get('error_description')) $('#err').textContent = p.get('error_description').replace(/\+/g, ' ');
+  }
+
+  $('#signin').onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('#signin .go'), err = $('#err');
+    err.className = 'err'; err.textContent = '';
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const redirect = location.origin + location.pathname;
+      const res = await fetch(`${BASE}/auth/v1/otp?redirect_to=${encodeURIComponent(redirect)}`, {
+        method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: $('#email').value.trim(), create_user: false }),
+      });
+      if (res.ok) { err.className = 'ok'; err.textContent = 'Check your email and open the link on this device.'; }
+      else if (res.status === 429) err.textContent = 'Too many tries. Wait a few minutes and try again.';
+      else err.textContent = 'That email isn’t set up for this reader.';
+    } catch { err.textContent = 'Couldn’t reach the server.'; }
+    btn.disabled = false; btn.textContent = 'Email me a sign-in link';
   };
 
-  // ---- decrypt ----
-  const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-  async function decrypt(pass) {
-    const res = await fetch('data.enc.json?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('nodata');
-    const box = await res.json();
-    const enc = new TextEncoder();
-    const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
-    const key = await crypto.subtle.deriveKey(
-      { name: 'PBKDF2', salt: unb64(box.salt), iterations: 250000, hash: 'SHA-256' },
-      base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  async function signOut() {
+    try { await fetch(`${BASE}/auth/v1/logout`, { method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${session?.access_token}` } }); } catch {}
+    clearSession(); location.reload();
+  }
+  $('#signOut').onclick = signOut;
+
+  // ---- articles ----
+  let view = 'unread';
+  let items = [];
+  let feeds = [];
+
+  const FIELDS = 'id,feed_title,title,link,summary,published,read,starred';
+  const FILTER = { unread: '&read=is.false', starred: '&starred=is.true', all: '' };
+
+  async function loadItems() {
+    items = await api(`items?select=${FIELDS}${FILTER[view]}&order=published.desc.nullslast,id.desc&limit=300`);
+    render();
+    refreshCounts();
+  }
+  async function refreshCounts() {
     try {
-      const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, key, unb64(box.data));
-      return JSON.parse(new TextDecoder().decode(plain));
-    } catch { throw new Error('badpass'); }
+      const [u, s] = await Promise.all([count('read=is.false'), count('starred=is.true')]);
+      $('#nUnread').textContent = u || ''; $('#nStarred').textContent = s || '';
+    } catch {}
+  }
+  async function loadFeeds() {
+    feeds = await api('feeds?select=id,url,feed_url,title,last_fetched,last_error&order=created_at.asc');
+    renderFeeds(); renderFoot();
   }
 
-  async function open(pass, remember) {
-    $('#err').textContent = '';
-    const btn = $('#unlock .go');
-    btn.disabled = true; btn.textContent = 'Opening…';
-    try {
-      const data = await decrypt(pass);
-      if (remember) store.set('pass', pass); else sessionStorage.setItem('pass', pass);
-      items = data.items; meta = data;
-      $('#lock').hidden = true; $('#app').hidden = false;
-      render();
-    } catch (e) {
-      store.del('pass'); sessionStorage.removeItem('pass');
-      $('#err').textContent = e.message === 'badpass' ? 'That passcode didn’t work.'
-        : e.message === 'nodata' ? 'No feed data yet. Run the “Fetch feeds” Action once.'
-        : 'Couldn’t load feeds.';
-      $('#pass').select();
-    } finally {
-      btn.disabled = false; btn.textContent = 'Open';
-    }
-  }
-
-  $('#unlock').onsubmit = e => { e.preventDefault(); const p = $('#pass').value; if (p) open(p, $('#remember').checked); };
-  $('#lockBtn').onclick = () => { store.del('pass'); sessionStorage.removeItem('pass'); location.reload(); };
-
-  // ---- render ----
   const ago = iso => {
     if (!iso) return '';
     const s = (Date.now() - Date.parse(iso)) / 1000;
@@ -85,49 +134,130 @@
   };
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '#';
+  const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 
   function render() {
-    let list;
-    if (view === 'starred') list = Object.values(starred).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    else if (view === 'unread') list = items.filter(i => !read.has(i.id));
-    else list = items;
-
-    $('#nUnread').textContent = items.filter(i => !read.has(i.id)).length || '';
-    $('#nStarred').textContent = Object.keys(starred).length || '';
     document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-pressed', t.dataset.view === view));
-
-    $('#list').innerHTML = list.length ? list.map(i => `
-      <article class="item ${read.has(i.id) ? 'read' : ''}" data-id="${esc(i.id)}">
+    if (!items.length) {
+      const msg = !feeds.length ? 'No feeds yet. <button class="btn" id="firstFeed" style="margin-top:12px">Add your first feed</button>'
+        : view === 'unread' ? 'All caught up.' : view === 'starred' ? 'Nothing starred yet.' : 'No articles yet. New feeds fill in within 15 minutes.';
+      $('#list').innerHTML = `<div class="empty">${msg}</div>`;
+      $('#firstFeed')?.addEventListener('click', openSheet);
+      return;
+    }
+    $('#list').innerHTML = items.map(i => `
+      <article class="item ${i.read ? 'read' : ''}" data-id="${i.id}">
         <a href="${esc(safeUrl(i.link))}" target="_blank" rel="noopener noreferrer">
-          <div class="meta"><span class="dot"></span><span>${esc(i.feed)}</span><span>·</span><span>${ago(i.date)}</span></div>
+          <div class="meta"><span class="dot"></span><span>${esc(i.feed_title)}</span>${i.published ? `<span>·</span><span>${ago(i.published)}</span>` : ''}</div>
           <h2 class="title">${esc(i.title)}</h2>
           ${i.summary ? `<p class="sum">${esc(i.summary)}</p>` : ''}
         </a>
-        <button class="icon-btn star" aria-label="Star" aria-pressed="${!!starred[i.id]}"><svg fill="none"><use href="#i-star"/></svg></button>
-      </article>`).join('')
-      : `<p class="empty">${view === 'unread' ? 'All caught up.' : view === 'starred' ? 'Nothing starred yet.' : 'No articles yet.'}</p>`;
-
-    const errs = meta.errors || [];
-    $('#foot').innerHTML = `Updated ${meta.updated ? new Date(meta.updated).toLocaleString() : '—'} · ${(meta.feeds || []).length} feeds`
-      + (errs.length ? `<details><summary>${errs.length} feed${errs.length > 1 ? 's' : ''} failed</summary>${errs.map(e => `<div>${esc(e.url)} (${esc(e.error)})</div>`).join('')}</details>` : '');
+        <button class="icon-btn star" aria-label="Star" aria-pressed="${i.starred}"><svg fill="none"><use href="#i-star"/></svg></button>
+      </article>`).join('');
+  }
+  function renderFoot() {
+    const bad = feeds.filter(f => f.last_error).length;
+    const last = feeds.map(f => f.last_fetched).filter(Boolean).sort().pop();
+    $('#foot').innerHTML = feeds.length
+      ? `${feeds.length} feed${feeds.length > 1 ? 's' : ''}${last ? ` · checked ${ago(last)} ago` : ''}`
+        + (bad ? ` · <button style="color:var(--accent);text-decoration:underline;font-size:13px" id="badFeeds">${bad} with problems</button>` : '')
+      : '';
+    $('#badFeeds')?.addEventListener('click', openSheet);
   }
 
-  $('#list').addEventListener('click', e => {
+  $('#list').addEventListener('click', async e => {
     const card = e.target.closest('.item'); if (!card) return;
-    const id = card.dataset.id;
-    const item = items.find(i => i.id === id) || starred[id];
+    const item = items.find(i => String(i.id) === card.dataset.id); if (!item) return;
     if (e.target.closest('.star')) {
       e.preventDefault();
-      if (starred[id]) delete starred[id]; else starred[id] = item;
-      save(); render(); return;
+      item.starred = !item.starred;
+      e.target.closest('.star').setAttribute('aria-pressed', item.starred);
+      api(`items?id=eq.${item.id}`, { method: 'PATCH', body: { starred: item.starred }, prefer: 'return=minimal' })
+        .then(refreshCounts).catch(() => { item.starred = !item.starred; render(); });
+      return;
     }
-    if (e.target.closest('a')) { read.add(id); save(); setTimeout(render, 150); }
+    if (e.target.closest('a') && !item.read) {
+      item.read = true; card.classList.add('read');
+      api(`items?id=eq.${item.id}`, { method: 'PATCH', body: { read: true }, prefer: 'return=minimal' })
+        .then(refreshCounts).catch(() => {});
+    }
   });
 
-  document.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; render(); scrollTo(0, 0); });
-  $('#markAll').onclick = () => { items.forEach(i => read.add(i.id)); save(); render(); };
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => { view = t.dataset.view; scrollTo(0, 0); loadItems().catch(fail); });
+  $('#markAll').onclick = async () => {
+    if (!confirm('Mark everything as read?')) return;
+    await api('items?read=is.false', { method: 'PATCH', body: { read: true }, prefer: 'return=minimal' }).catch(fail);
+    loadItems().catch(fail);
+  };
 
-  // ---- auto-unlock if remembered ----
-  const remembered = store.get('pass', null) || sessionStorage.getItem('pass');
-  if (remembered) open(remembered, !!store.get('pass', null));
+  // ---- feeds panel ----
+  function openSheet() { $('#sheet').hidden = false; $('#sheetMsg').textContent = ''; loadFeeds().catch(fail); setTimeout(() => $('#newUrl').focus(), 50); }
+  function closeSheet() { $('#sheet').hidden = true; loadItems().catch(fail); }
+  $('#feedsBtn').onclick = openSheet;
+  $('#closeSheet').onclick = closeSheet;
+  $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+
+  function renderFeeds() {
+    $('#feedList').innerHTML = feeds.map(f => {
+      const status = f.last_error ? `<div class="sub bad">${esc(f.last_error)}</div>`
+        : !f.last_fetched ? `<div class="sub">Waiting for first check</div>`
+        : `<div class="sub">${esc(host(f.feed_url || f.url))} · checked ${ago(f.last_fetched)} ago</div>`;
+      return `<li class="feed-row" data-id="${f.id}">
+        <div class="txt"><div class="name">${esc(f.title || host(f.url))}</div>${status}</div>
+        <button class="icon-btn del" aria-label="Remove ${esc(f.title || host(f.url))}" title="Remove"><svg><use href="#i-trash"/></svg></button>
+      </li>`;
+    }).join('') || '<li class="tip" style="padding:12px 0">No feeds yet.</li>';
+  }
+
+  $('#addForm').onsubmit = async e => {
+    e.preventDefault();
+    let url = $('#newUrl').value.trim();
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    try { new URL(url); } catch { $('#sheetMsg').textContent = 'That doesn’t look like a web address.'; return; }
+    try {
+      await api('feeds', { method: 'POST', body: { url }, prefer: 'return=minimal' });
+      $('#newUrl').value = '';
+      $('#sheetMsg').textContent = `Added ${host(url)}. Articles show up within 15 minutes.`;
+      loadFeeds();
+    } catch (err) {
+      $('#sheetMsg').textContent = err.status === 409 ? 'You already follow that one.' : 'Couldn’t add it. Try again.';
+    }
+  };
+
+  $('#feedList').addEventListener('click', async e => {
+    const btn = e.target.closest('.del'); if (!btn) return;
+    const f = feeds.find(x => String(x.id) === btn.closest('.feed-row').dataset.id);
+    if (!f || !confirm(`Remove ${f.title || host(f.url)}? Starred articles from it are kept.`)) return;
+    try {
+      await api(`items?feed_id=eq.${f.id}&starred=is.false`, { method: 'DELETE', prefer: 'return=minimal' });
+      await api(`feeds?id=eq.${f.id}`, { method: 'DELETE', prefer: 'return=minimal' });
+      loadFeeds();
+    } catch { $('#sheetMsg').textContent = 'Couldn’t remove it. Try again.'; }
+  });
+
+  // ---- start ----
+  function fail(e) {
+    if (e?.message === 'signedout') { showSignIn(); return; }
+    console.error(e);
+    $('#list').innerHTML = '<div class="empty">Couldn’t load your feeds. Check your connection and refresh.</div>';
+  }
+  function showSignIn() { $('#boot').hidden = true; $('#app').hidden = true; $('#lock').hidden = false; }
+
+  async function start() {
+    if (!/^https?:\/\//.test(BASE) || !KEY || KEY.startsWith('YOUR')) {
+      $('#boot').textContent = 'Add your Supabase address and publishable key to config.js.';
+      return;
+    }
+    readRedirect();
+    if (!session) return showSignIn();
+    try {
+      await loadFeeds();
+      $('#boot').hidden = true; $('#lock').hidden = true; $('#app').hidden = false;
+      await loadItems();
+      // keep it fresh while open
+      setInterval(() => { if (!document.hidden && $('#sheet').hidden) refreshCounts(); }, 120000);
+    } catch (e) { $('#boot').hidden = true; fail(e); }
+  }
+  start();
 })();

@@ -1,33 +1,37 @@
 # Feeds
 
-A private, no-frills RSS/Atom reader. A GitHub Action fetches your feeds every hour, encrypts the result with your passcode, and saves it to the repo. A single static page on GitHub Pages decrypts it in your browser.
+A private, no-frills RSS/Atom reader. The page is a static site on GitHub Pages, and your feeds, articles, and read/starred state live in your own Supabase database, so everything syncs across your phone and PC.
 
-- **No dependencies.** Plain Node script, plain HTML/JS, no build step.
-- **Private on a public repo.** Your feed list is a GitHub secret, and the articles are stored AES-256 encrypted. Without the passcode the repo only shows scrambled data, and search engines are told not to index the page.
-- **Features:** unread tracking, starring, mark all read, and a light/dark toggle. Read and starred state stays in each browser.
+- **No dependencies.** Plain HTML/JS and a plain Node script. No build step, no libraries.
+- **Private.** You sign in with an emailed magic link, once per device. Row-level security means the database only returns your own rows. Nothing personal is stored in this repo.
+- **Manage feeds in the page.** Paste a feed address or just a website, and the fetcher finds the site's feed.
+- **Features:** unread tracking, starring, mark all read, and a light/dark toggle.
 
-## Setup (about 5 minutes)
+## How it works
 
-1. Create a new GitHub repo (public is fine) and push these files to it.
-2. Go to **Settings → Secrets and variables → Actions → New repository secret** and add two secrets:
-   - `PASSCODE`: the passphrase you'll type to open the reader. Make it long; anyone with the data file could try to guess it offline.
-   - `FEEDS`: your feed URLs, one per line. Lines starting with `#` are ignored.
-3. Go to **Settings → Pages** and set the source to *Deploy from a branch*, branch `main`, folder `/docs`.
-4. Go to **Actions → Fetch feeds → Run workflow** for the first fetch. After that it runs hourly.
-5. Open `https://<you>.github.io/<repo>/` and enter your passcode.
-
-## Day to day
-
-- **Add or remove feeds:** edit the `FEEDS` secret, then run the workflow (or wait for the next hour).
-- **Change the passcode:** update the `PASSCODE` secret and run the workflow. Old devices will ask for the new one.
-- **Refresh now:** Actions → Fetch feeds → Run workflow.
-- **Limits:** the newest 30 items per feed and 400 overall are kept. Change `MAX_PER_FEED` and `MAX_TOTAL` at the top of `scripts/fetch.mjs`. Starred items are saved in full, so they stay after they age out.
-- Commits only happen when new articles arrive, so the repo stays small.
-
-## Test locally
-
-```sh
-printf "https://example.com/feed.xml\n" > feeds.local.txt   # git-ignored
-PASSCODE=test node scripts/fetch.mjs
-cd docs && python3 -m http.server   # open http://localhost:8000
 ```
+GitHub Action (every 15 min) ──fetch feeds──▶ Supabase (feeds, items)
+                                                   ▲
+GitHub Pages: docs/index.html ──your login─────────┘
+```
+
+## Setup
+
+1. **Create a Supabase project** (the free tier is fine).
+2. **Create the tables:** run `supabase/schema.sql` in the SQL editor.
+3. **Set up sign-in:**
+   - Go to Authentication → URL Configuration and set the Site URL to `https://raysantos.github.io/rss-reader/`.
+   - Go to Authentication → Users → Add user, and create yourself with your email.
+   - Go to Authentication → Sign In / Providers and turn off "Allow new users to sign up."
+4. **Connect the page:** put your project URL and publishable key in `docs/config.js`. Both are safe to publish.
+5. **Connect the fetcher:** add the repo secrets `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. The secret key never goes in the page.
+   ```
+   gh secret set SUPABASE_URL -R raysantos/rss-reader
+   gh secret set SUPABASE_SECRET_KEY -R raysantos/rss-reader
+   ```
+6. Open the site, sign in, and add feeds with the RSS button in the header.
+
+## Settings
+
+- To change how often feeds are checked, edit the `cron` in `.github/workflows/fetch.yml`.
+- To change how much is kept, edit `MAX_PER_FEED` and `KEEP_DAYS` in `scripts/fetch.mjs`. Unstarred articles older than 60 days are removed; starred ones are kept forever.
