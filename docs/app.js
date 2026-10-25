@@ -230,6 +230,10 @@
         .then(refreshCounts).catch(() => { item.starred = !item.starred; render(); });
       return;
     }
+    const vid = ytId(item.link);
+    if (vid && e.target.closest('a') && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
+      e.preventDefault(); openPlayer(card, item, vid);
+    }
     if (e.target.closest('a') && !item.read) {
       item.read = true; card.classList.add('read');
       api(`items?id=eq.${item.id}`, { method: 'PATCH', body: { read: true }, prefer: 'return=minimal' })
@@ -251,7 +255,57 @@
     scrollTo(0, 0); loadItems().catch(fail);
   }
   $('#feedChip').onclick = clearFeed;
-  addEventListener('keydown', e => { if (e.key === 'Escape' && feedFilter && $('#sheet').hidden && !$('#confirm').open) clearFeed(); });
+  addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !$('#sheet').hidden || $('#confirm').open) return;
+    if (document.querySelector('.player')) { closePlayer(); return; }
+    if (feedFilter) clearFeed();
+  });
+
+  // ---- inline video player (slides open below the clicked card's row) ----
+  function ytId(link) {
+    const m = String(link || '').match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/);
+    return m ? m[1] : null;
+  }
+  function closePlayer(instant) {
+    const p = document.querySelector('.player'); if (!p) return;
+    document.querySelectorAll('.item.playing').forEach(c => c.classList.remove('playing'));
+    if (instant) { p.remove(); return; }
+    p.classList.remove('open');
+    p.addEventListener('transitionend', () => p.remove(), { once: true });
+    setTimeout(() => p.remove(), 500);
+  }
+  function openPlayer(card, item, vid) {
+    const same = card.classList.contains('playing');
+    closePlayer(true);
+    if (same) return;   // clicking the playing card again closes it
+    // find the last card in this card's row so the player spans the full row underneath
+    const cards = [...document.querySelectorAll('#list > .item')];
+    const top = card.offsetTop;
+    const rowEnd = cards.filter(c => Math.abs(c.offsetTop - top) < 4).pop() || card;
+    const p = document.createElement('section');
+    p.className = 'player';
+    p.setAttribute('aria-label', `Playing ${item.title}`);
+    p.innerHTML = `<div class="player-inner">
+      <div class="player-frame">
+        <iframe src="https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&rel=0&modestbranding=1&playsinline=1"
+          title="${esc(item.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen
+          referrerpolicy="strict-origin-when-cross-origin"></iframe>
+      </div>
+      <div class="player-bar">
+        <div class="player-text"><div class="player-src">${esc(item.feed_title || '')}</div><div class="player-title">${esc(item.title)}</div></div>
+        <a class="btn ghost" href="${esc(safeUrl(item.link))}" target="_blank" rel="noopener noreferrer">Open on YouTube</a>
+        <button class="icon-btn player-close" aria-label="Close player"><svg><use href="#i-x"/></svg></button>
+      </div>
+    </div>`;
+    rowEnd.after(p);
+    card.classList.add('playing');
+    p.querySelector('.player-close').onclick = () => closePlayer();
+    requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add('open')));
+    setTimeout(() => {
+      const r = p.getBoundingClientRect(), head = document.querySelector('header').offsetHeight;
+      if (r.top < head || r.bottom > innerHeight) scrollTo({ top: scrollY + r.top - head - 12, behavior: 'smooth' });
+    }, 380);
+  }
 
   // ---- confirmation modal ----
   function confirmModal({ title, text, ok = 'Unsubscribe' }) {

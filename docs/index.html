@@ -129,6 +129,21 @@
   .modal p { margin: 0 0 20px; color: var(--muted); font-size: 15px; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .btn.danger { background: #c2410c; }
+  /* inline player */
+  .player { grid-column: 1 / -1; display: grid; grid-template-rows: 0fr; opacity: 0;
+            transition: grid-template-rows .38s ease-in-out, opacity .3s ease-in-out; }
+  .player.open { grid-template-rows: 1fr; opacity: 1; }
+  .player-inner { overflow: hidden; min-height: 0; }
+  .player-frame { max-width: 960px; margin: 4px auto 0; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #000; }
+  .player-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .player-bar { max-width: 960px; margin: 10px auto 6px; display: flex; align-items: center; gap: 12px; }
+  .player-text { flex: 1; min-width: 0; }
+  .player-src { font-size: 13px; color: var(--muted); }
+  .player-title { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .player .btn.ghost { font-size: 14px; padding: 8px 12px; text-decoration: none; }
+  .item.playing .thumb { outline: 3px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .player { transition: none; } }
+  @media (max-width: 520px) { .player .btn.ghost { display: none; } }
   .empty { text-align: center; color: var(--muted); padding: 64px 0; }
   .foot { font-size: 13px; color: var(--muted); padding-top: 24px; }
   .foot details { margin-top: 8px; }
