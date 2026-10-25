@@ -272,6 +272,57 @@
     }
   };
 
+  // ---- import: YouTube Takeout subscriptions.csv or OPML ----
+  function parseCsv(text) {
+    const rows = []; let row = [], cell = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; }
+      else if (c === '"') q = true;
+      else if (c === ',') { row.push(cell); cell = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += c;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+  function feedsFromFile(text) {
+    const out = [];
+    if (/<opml[\s>]/i.test(text)) {
+      const doc = new DOMParser().parseFromString(text, 'text/xml');
+      doc.querySelectorAll('outline[xmlUrl], outline[xmlurl]').forEach(o => {
+        const url = o.getAttribute('xmlUrl') || o.getAttribute('xmlurl');
+        if (/^https?:\/\//i.test(url)) out.push({ url, title: o.getAttribute('title') || o.getAttribute('text') || null });
+      });
+      return out;
+    }
+    // Google Takeout: Channel Id, Channel Url, Channel Title (header wording varies by language)
+    for (const r of parseCsv(text)) {
+      const id = (r.join(' ').match(/\bUC[\w-]{22}\b/) || [])[0];
+      if (id) out.push({ url: `https://www.youtube.com/feeds/videos.xml?channel_id=${id}`, title: (r[2] || '').trim() || null });
+    }
+    return out;
+  }
+  $('#importFile').addEventListener('change', async e => {
+    const file = e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    const msg = $('#sheetMsg');
+    const found = feedsFromFile(await file.text());
+    if (!found.length) { msg.textContent = 'No feeds found in that file. For YouTube, use subscriptions.csv from Google Takeout.'; return; }
+    const have = new Set(feeds.map(f => f.url));
+    const fresh = [...new Map(found.filter(f => !have.has(f.url)).map(f => [f.url, f])).values()];
+    if (!fresh.length) { msg.textContent = `All ${found.length} are already in your list.`; return; }
+    msg.textContent = `Adding ${fresh.length}…`;
+    try {
+      for (let i = 0; i < fresh.length; i += 200) {
+        await api('feeds?on_conflict=user_id,url', { method: 'POST', body: fresh.slice(i, i + 200), prefer: 'resolution=ignore-duplicates,return=minimal' });
+      }
+      const skipped = found.length - fresh.length;
+      msg.textContent = `Added ${fresh.length} feed${fresh.length > 1 ? 's' : ''}${skipped ? ` (${skipped} already there)` : ''}. They fill in within 15 minutes.`;
+      loadFeeds();
+    } catch { msg.textContent = 'Couldn’t import that file. Try again.'; }
+  });
+
   $('#feedList').addEventListener('click', async e => {
     const btn = e.target.closest('.del'); if (!btn) return;
     const f = feeds.find(x => String(x.id) === btn.closest('.feed-row').dataset.id);

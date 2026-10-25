@@ -162,6 +162,11 @@
       <button class="btn" type="submit">Add</button>
     </form>
     <p class="tip">A normal website address works; the feed is found for you. New feeds fill in within 15 minutes.</p>
+    <div style="display:flex;gap:8px;align-items:center;margin:0 0 12px">
+      <label class="btn ghost" for="importFile" style="cursor:pointer">Import a file</label>
+      <input type="file" id="importFile" accept=".csv,.opml,.xml,text/csv,text/xml" hidden>
+      <span class="tip" style="margin:0">YouTube subscriptions (from Google Takeout) or an OPML export from another reader.</span>
+    </div>
     <ul class="feed-list" id="feedList"></ul>
     <p class="msg" id="sheetMsg" role="status"></p>
     <h3 style="font-size:15px;margin:28px 0 8px">Password</h3>

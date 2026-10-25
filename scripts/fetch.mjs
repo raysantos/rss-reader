@@ -57,7 +57,7 @@ function parse(xml, fallbackTitle) {
   const items = (isAtom ? blocks(xml, 'entry') : blocks(xml, 'item')).slice(0, MAX_PER_FEED).map(b => {
     const link = isAtom ? atomLink(b) : (tag(b, 'link') || tag(b, 'guid'));
     const date = tag(b, 'pubDate') || tag(b, 'published') || tag(b, 'updated') || tag(b, 'dc:date');
-    const body = tag(b, 'description') || tag(b, 'summary') || tag(b, 'content:encoded') || tag(b, 'content');
+    const body = tag(b, 'description') || tag(b, 'summary') || tag(b, 'content:encoded') || tag(b, 'content') || tag(b, 'media:description');
     const t = Date.parse(date);
     return {
       guid: tag(b, 'guid') || tag(b, 'id') || link || plain(tag(b, 'title')),
