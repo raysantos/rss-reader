@@ -164,7 +164,7 @@ async function loadYouTube(feedUrl, feed) {
       const items = scrapeYouTubeVideos(text);
       if (items.length) {
         const name = plain((text.match(/<meta property="og:title" content="([^"]*)"/) || [])[1] || '') || feed.title || 'YouTube';
-        return { url: feedUrl, kind: 'feed', title: name, items };
+        return { url: feedUrl, kind: 'feed', title: name, items, fallback: true };
       }
     } catch { /* fall through */ }
   }
@@ -259,7 +259,11 @@ const clean = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, tidy
 
 async function check(feed) {
   try {
-    const { url, kind, title, items } = await load(feed);
+    const res = await load(feed);
+    const { url, kind, title } = res;
+    let items = res.items;
+    // The Videos-page fallback lists older uploads the feed never showed; only keep genuinely recent ones.
+    if (res.fallback) items = items.filter(i => i.published && Date.parse(i.published) > Date.now() - 3 * 864e5);
     if (items.length) {
       const firstTime = !feed.kind;   // kind is only set after a feed's first successful check
       const newestFirst = [...items].sort((a, b) => (b.published || '').localeCompare(a.published || ''));
