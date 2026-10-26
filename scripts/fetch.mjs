@@ -87,14 +87,88 @@ function parse(xml, fallbackTitle) {
   return { title, items };
 }
 
-async function get(url) {
+async function get(url, extra = {}) {
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'personal-rss-reader/1.0', Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8' },
+    headers: { 'User-Agent': 'personal-rss-reader/1.0', Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8', ...extra },
     signal: AbortSignal.timeout(20000),
     redirect: 'follow',
   });
   if (!res.ok) throw new Error(`The site answered ${res.status}`);
   return { text: await res.text(), url: res.url || url };
+}
+
+// ---- YouTube: its feed endpoint fails intermittently (404/500), so retry, try the uploads playlist feed,
+//      and finally read the channel's Videos page. ----
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const isYouTubeFeed = u => /youtube\.com\/feeds\/videos\.xml/i.test(u || '');
+const channelIdOf = u => (String(u || '').match(/channel_id=(UC[\w-]{22})/) || [])[1];
+
+function agoToDate(text) {
+  const m = String(text || '').match(/(\d+)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|wks?|w|months?|mos?|years?|yrs?|y)\b/i);
+  if (!m) return null;
+  const n = +m[1], u = m[2].toLowerCase();
+  const ms = u.startsWith('mo') ? 30 * 864e5 : u.startsWith('s') ? 1e3 : u.startsWith('mi') || u === 'm' ? 6e4
+    : u.startsWith('h') ? 36e5 : u.startsWith('d') ? 864e5 : u.startsWith('w') ? 7 * 864e5 : 365 * 864e5;
+  return new Date(Date.now() - n * ms).toISOString();
+}
+
+function scrapeYouTubeVideos(html) {
+  const m = html.match(/var ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
+  if (!m) return [];
+  let data; try { data = JSON.parse(m[1]); } catch { return []; }
+  const out = [], seen = new Set();
+  (function walk(o) {
+    if (!o || typeof o !== 'object' || out.length >= 15) return;
+    const L = o.lockupViewModel;
+    if (L && L.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO' && /^[\w-]{11}$/.test(L.contentId || '') && !seen.has(L.contentId)) {
+      const md = L.metadata?.lockupMetadataViewModel;
+      const parts = (md?.metadata?.contentMetadataViewModel?.metadataRows || []).flatMap(r => (r.metadataParts || []).map(p => p.text?.content || ''));
+      seen.add(L.contentId);
+      out.push({ id: L.contentId, title: md?.title?.content || '', ago: parts.find(t => /ago|streamed|premiered/i.test(t)) || '' });
+    }
+    const V = o.videoRenderer;   // older page layout
+    if (V && /^[\w-]{11}$/.test(V.videoId || '') && !seen.has(V.videoId)) {
+      seen.add(V.videoId);
+      out.push({ id: V.videoId, title: V.title?.runs?.[0]?.text || V.title?.simpleText || '', ago: V.publishedTimeText?.simpleText || '' });
+    }
+    for (const k in o) walk(o[k]);
+  })(data);
+  return out.filter(v => v.title).map(v => ({
+    guid: `yt:video:${v.id}`,           // same id the feed uses, so nothing duplicates when the feed comes back
+    title: v.title,
+    link: `https://www.youtube.com/watch?v=${v.id}`,
+    published: agoToDate(v.ago),
+    summary: '',
+    image: `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+  }));
+}
+
+async function loadYouTube(feedUrl, feed) {
+  const cid = channelIdOf(feedUrl);
+  const attempts = [feedUrl, feedUrl, feedUrl];
+  if (cid) attempts.push(`https://www.youtube.com/feeds/videos.xml?playlist_id=UULF${cid.slice(2)}`);
+  for (let n = 0; n < attempts.length; n++) {
+    try {
+      const { text } = await get(attempts[n]);
+      if (isFeed(text)) {
+        const parsed = parse(text, feed.title || 'YouTube');
+        // the uploads-playlist feed is titled after the playlist, so keep the channel's name
+        return { url: feedUrl, kind: 'feed', title: n === 3 ? (feed.title || parsed.title) : parsed.title, items: parsed.items };
+      }
+    } catch { /* try the next attempt */ }
+    await sleep(400 * (n + 1));
+  }
+  if (cid) {
+    try {
+      const { text } = await get(`https://www.youtube.com/channel/${cid}/videos`, { 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' });
+      const items = scrapeYouTubeVideos(text);
+      if (items.length) {
+        const name = plain((text.match(/<meta property="og:title" content="([^"]*)"/) || [])[1] || '') || feed.title || 'YouTube';
+        return { url: feedUrl, kind: 'feed', title: name, items };
+      }
+    } catch { /* fall through */ }
+  }
+  throw new Error('YouTube’s feed is having trouble right now; it will retry automatically');
 }
 
 // ---- page fallback: pull article headlines from a site that has no feed ----
@@ -156,13 +230,16 @@ function scrapePage(html, pageUrl) {
 // Accepts a feed address or a normal website; for a website, finds its advertised feed,
 // and if it has none, reads the page itself for article headlines.
 async function load(feed) {
-  let { text, url } = await get(feed.feed_url || feed.url);
+  const start = feed.feed_url || feed.url;
+  if (isYouTubeFeed(start)) return loadYouTube(start, feed);
+  let { text, url } = await get(start);
   if (!isFeed(text)) {
     const links = text.match(/<link\b[^>]*>/gi) || [];
     const alt = links.find(l => /rel=["']?alternate/i.test(l) && /application\/(rss|atom)\+xml/i.test(l));
     const href = alt && alt.match(/href=["']([^"']+)["']/i);
     if (!href) return { url, kind: 'page', ...scrapePage(text, url) };
     const feedUrl = new URL(decode(href[1]), url).href;
+    if (isYouTubeFeed(feedUrl)) return loadYouTube(feedUrl, feed);
     const page = { text, url };
     ({ text, url } = await get(feedUrl));
     if (!isFeed(text)) return { url: page.url, kind: 'page', ...scrapePage(page.text, page.url) };
@@ -171,9 +248,9 @@ async function load(feed) {
 }
 
 // ---- run ----
-const feeds = await db('feeds?select=id,user_id,url,feed_url,kind');
+const feeds = await db('feeds?select=id,user_id,url,feed_url,kind,title');
 let saved = 0, failed = 0;
-const CONCURRENCY = 8;          // be polite: check a few feeds at a time
+const CONCURRENCY = 10;         // be polite: check a few feeds at a time
 const FIRST_UNREAD = 3;         // a brand-new feed only marks its newest few items unread
 
 // Postgres rejects NUL characters and broken emoji halves in text; strip them.
